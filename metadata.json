@@ -1,0 +1,6 @@
+{
+  "name": "NWP Closed Loop Control 3D Simulator",
+  "description": "Interactive 3D process control simulator and quiz prep tool for NWP Instrument Technicians covering first-order, integrating, dead-time, and multicapacity loops.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
