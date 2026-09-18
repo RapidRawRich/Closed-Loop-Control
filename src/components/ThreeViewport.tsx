@@ -312,9 +312,10 @@ export const ThreeViewport: React.FC<ThreeViewportProps> = ({
     const glassMat = new THREE.MeshStandardMaterial({
       color: 0x94a3b8,
       transparent: true,
-      opacity: 0.3,
+      opacity: 0.25,
       side: THREE.DoubleSide,
       roughness: 0.1,
+      depthWrite: false,
     });
 
     if (processType === 'firstOrder') {
@@ -325,6 +326,7 @@ export const ThreeViewport: React.FC<ThreeViewportProps> = ({
       const shellGeo = new THREE.CylinderGeometry(1.8, 1.8, 7.6, 32);
       const shell = new THREE.Mesh(shellGeo, glassMat);
       shell.rotation.z = Math.PI / 2;
+      shell.renderOrder = 10;
       equipGroup.add(shell);
 
       // 2. Channel Heads (End Flanges)
@@ -428,6 +430,7 @@ export const ThreeViewport: React.FC<ThreeViewportProps> = ({
       // 1. Transparent Outer Cylindrical Silo
       const tankGeo = new THREE.CylinderGeometry(2.4, 2.4, 6.4, 32, 1, true);
       const tank = new THREE.Mesh(tankGeo, glassMat);
+      tank.renderOrder = 10;
       equipGroup.add(tank);
 
       // Top Dome
@@ -459,9 +462,11 @@ export const ThreeViewport: React.FC<ThreeViewportProps> = ({
         roughness: 0.1,
         transparent: true,
         opacity: 0.85,
+        depthWrite: false,
       });
       const liquid = new THREE.Mesh(liqGeo, liqMat);
       liquid.position.y = -3.2;
+      liquid.renderOrder = 1;
       equipGroup.add(liquid);
       dynamicMeshesRef.current.tankLiquid = liquid;
 
@@ -592,6 +597,7 @@ export const ThreeViewport: React.FC<ThreeViewportProps> = ({
       // 1. Tall Column Outer Shell
       const colGeo = new THREE.CylinderGeometry(1.8, 1.8, 8.4, 32, 1, true);
       const col = new THREE.Mesh(colGeo, glassMat);
+      col.renderOrder = 10;
       equipGroup.add(col);
 
       // Top and Bottom Heads
@@ -614,9 +620,10 @@ export const ThreeViewport: React.FC<ThreeViewportProps> = ({
       equipGroup.add(refluxPipe);
 
       const refluxStreamGeo = new THREE.CylinderGeometry(0.1, 0.1, 1.1, 16);
-      const streamMat = new THREE.MeshBasicMaterial({ color: 0x38bdf8, transparent: true, opacity: 0.8 });
+      const streamMat = new THREE.MeshBasicMaterial({ color: 0x38bdf8, transparent: true, opacity: 0.85, depthWrite: false });
       const refluxStream = new THREE.Mesh(refluxStreamGeo, streamMat);
       refluxStream.position.set(-1.0, 3.4, 0);
+      refluxStream.renderOrder = 2;
       equipGroup.add(refluxStream);
       dynamicMeshesRef.current.distillFeed = refluxStream;
 
@@ -644,6 +651,7 @@ export const ThreeViewport: React.FC<ThreeViewportProps> = ({
           // Liquid stream flowing through downcomer
           const dcStream = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, pipeHeight * 0.95, 16), streamMat);
           dcStream.position.set(dcX, (trayY + nextY) / 2.0, 0);
+          dcStream.renderOrder = 2;
           equipGroup.add(dcStream);
           dynamicMeshesRef.current.distillStreams.push(dcStream);
         }
@@ -661,11 +669,13 @@ export const ThreeViewport: React.FC<ThreeViewportProps> = ({
           emissive: 0x0284c7,
           emissiveIntensity: 0.85,
           transparent: true,
-          opacity: 0.85,
+          opacity: 0.88,
           roughness: 0.2,
+          depthWrite: false,
         });
         const froth = new THREE.Mesh(new THREE.CylinderGeometry(1.72, 1.72, 0.35, 32), frothMat);
         froth.position.y = trayY + 0.2;
+        froth.renderOrder = 1;
         equipGroup.add(froth);
         dynamicMeshesRef.current.distillTrays.push(froth);
 
