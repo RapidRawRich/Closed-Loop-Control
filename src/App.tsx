@@ -5,6 +5,7 @@ import { StripChart } from './components/StripChart';
 import { ControlPanel } from './components/ControlPanel';
 import { TheoryPanel } from './components/TheoryPanel';
 import { QuizModal } from './components/QuizModal';
+import { ProcessDynamicsBar } from './components/ProcessDynamicsBar';
 import {
   Activity,
   Award,
@@ -35,6 +36,9 @@ export default function App() {
     tauD: 0.5,
     kp: 1.0,
   });
+
+  const paramsRef = useRef(params);
+  paramsRef.current = params;
 
   // Loop Dynamic States
   const [sp, setSp] = useState<number>(50.0);
@@ -176,6 +180,7 @@ export default function App() {
       if (isPaused) return;
 
       const phys = physicsRef.current;
+      const currentParams = paramsRef.current;
       phys.sampleCount++;
 
       // 1. Controller Calculations (PI Controller)
@@ -184,11 +189,11 @@ export default function App() {
       const error = currentSP - currentPV;
 
       // Proportional term
-      const pTerm = params.kc * error;
+      const pTerm = currentParams.kc * error;
 
       // Integral term (with anti-windup clamping)
-      if (params.invTi > 0) {
-        phys.integralSum += params.kc * (params.invTi / 60.0) * error * DT * 10.0;
+      if (currentParams.invTi > 0) {
+        phys.integralSum += currentParams.kc * (currentParams.invTi / 60.0) * error * DT * 10.0;
         phys.integralSum = Math.max(-45, Math.min(45, phys.integralSum));
       } else {
         phys.integralSum = 0; // P-only mode
@@ -200,7 +205,7 @@ export default function App() {
       phys.co = computedCO;
 
       // 2. Dead Time Ring Buffer Update
-      const delaySteps = Math.min(DELAY_BUFFER_MAX - 1, Math.max(0, Math.round(params.tauD / DT)));
+      const delaySteps = Math.min(DELAY_BUFFER_MAX - 1, Math.max(0, Math.round(currentParams.tauD / DT)));
       phys.coDelayBuffer[phys.bufferHead] = computedCO;
       const readIdx = (phys.bufferHead - delaySteps + DELAY_BUFFER_MAX) % DELAY_BUFFER_MAX;
       const delayedCO = phys.coDelayBuffer[readIdx];
@@ -212,8 +217,8 @@ export default function App() {
       if (processType === 'firstOrder') {
         // Gp(s) = Kp / (1 + tau1*s)
         // dPV/dt = [Kp * delayedCO + Load - PV] / tau1
-        const targetPV = params.kp * delayedCO + load;
-        const dpv = (targetPV - phys.pv) / Math.max(0.2, params.tau1);
+        const targetPV = currentParams.kp * delayedCO + load;
+        const dpv = (targetPV - phys.pv) / Math.max(0.2, currentParams.tau1);
         phys.pv += dpv * DT;
       } else if (processType === 'integrating') {
         // Gp(s) = 1 / (tauI * s)
@@ -221,31 +226,36 @@ export default function App() {
         // dLevel/dt = (Inflow - Outflow) / tauI
         const inflow = delayedCO;
         const outflow = 50.0 + load;
-        const rate = (inflow - outflow) / (Math.max(0.5, params.tau1) * 3.0);
+        const rate = (inflow - outflow) / (Math.max(0.5, currentParams.tau1) * 3.0);
         phys.pv += rate * DT * 5.0;
       } else if (processType === 'deadTime') {
         // Pure transport delay along conveyor: Gp(s) = Kp * e^(-tauD*s)
         // Slight sensor lag filter
-        const targetPV = params.kp * delayedCO + load;
-        const filterLag = Math.max(0.1, params.tau1 * 0.3);
+        const targetPV = currentParams.kp * delayedCO + load;
+        const filterLag = Math.max(0.1, currentParams.tau1 * 0.3);
         const dpv = (targetPV - phys.pv) / filterLag;
         phys.pv += dpv * DT;
       } else if (processType === 'multiCapacity') {
         // 4 Cascaded Trays in Series: Gp(s) = Kp / (1 + tau_i*s)^4
-        const subTau = Math.max(0.2, params.tau1 / 4.0);
+        // Liquid cascades Top-down: Tray 1 -> Tray 2 -> Tray 3 -> Tray 4
+        const subTau = Math.max(0.15, currentParams.tau1 / 4.0);
 
-        // Tray 1
-        const target1 = delayedCO + load;
+        // Tray 1 (Top Stage / Reflux Inflow)
+        const target1 = Math.max(0.0, Math.min(100.0, currentParams.kp * delayedCO + load));
         phys.tray1 += ((target1 - phys.tray1) / subTau) * DT;
+        phys.tray1 = Math.max(0.0, Math.min(100.0, phys.tray1));
 
-        // Tray 2
+        // Tray 2 (Stage 2)
         phys.tray2 += ((phys.tray1 - phys.tray2) / subTau) * DT;
+        phys.tray2 = Math.max(0.0, Math.min(100.0, phys.tray2));
 
-        // Tray 3
+        // Tray 3 (Stage 3)
         phys.tray3 += ((phys.tray2 - phys.tray3) / subTau) * DT;
+        phys.tray3 = Math.max(0.0, Math.min(100.0, phys.tray3));
 
-        // Tray 4 (Final PV)
+        // Tray 4 (Bottoms / Measured PV)
         phys.tray4 += ((phys.tray3 - phys.tray4) / subTau) * DT;
+        phys.tray4 = Math.max(0.0, Math.min(100.0, phys.tray4));
 
         phys.pv = phys.tray4;
       }
@@ -257,9 +267,9 @@ export default function App() {
       const errMag = Math.abs(currentSP - phys.pv);
       if (errMag < 0.8 && Math.abs(phys.co - 50.0) < 5.0) {
         setStability('steady');
-      } else if (params.kc > 5.0 && params.tauD > 1.2) {
+      } else if (currentParams.kc > 5.0 && currentParams.tauD > 1.2) {
         setStability('oscillating');
-      } else if (params.kc > 12.0) {
+      } else if (currentParams.kc > 12.0) {
         setStability('unstable');
       } else {
         setStability('transient');
@@ -274,7 +284,7 @@ export default function App() {
     }, DT * 1000);
 
     return () => clearInterval(timer);
-  }, [params, processType, isPaused]);
+  }, [processType, isPaused]);
 
   const loopState: LoopState = {
     sp,
@@ -407,8 +417,16 @@ export default function App() {
             />
           </div>
 
+          {/* Real-Time Quick Dynamics Sliders Bar */}
+          <ProcessDynamicsBar
+            processType={processType}
+            params={params}
+            onParamsChange={handleParamsChange}
+            trayStates={trayStates}
+          />
+
           {/* Bottom Half: 3-Channel Strip Chart Recorder */}
-          <div className="h-44 sm:h-52 shrink-0">
+          <div className="h-40 sm:h-48 shrink-0">
             <StripChart
               sp={sp}
               pv={pv}

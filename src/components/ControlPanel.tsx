@@ -225,12 +225,28 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
         </div>
 
         {/* Process Dead Time (tau_D) */}
-        <div className="space-y-1">
-          <div className="flex justify-between text-xs">
+        <div className="space-y-1 bg-slate-950/40 p-2 rounded-lg border border-slate-800/80">
+          <div className="flex items-center justify-between text-xs">
             <span className="font-semibold text-slate-300 flex items-center gap-1">
               Dead Time (&tau;<sub>D</sub>)
             </span>
-            <span className="font-mono font-bold text-cyan-300">{params.tauD.toFixed(1)}s</span>
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => onParamsChange({ tauD: Math.max(0, +(params.tauD - 0.5).toFixed(1)) })}
+                className="px-1 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-[10px] font-mono text-slate-300 border border-slate-700 active:scale-95"
+              >
+                -0.5
+              </button>
+              <button
+                type="button"
+                onClick={() => onParamsChange({ tauD: Math.min(6.0, +(params.tauD + 0.5).toFixed(1)) })}
+                className="px-1 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-[10px] font-mono text-slate-300 border border-slate-700 active:scale-95"
+              >
+                +0.5
+              </button>
+              <span className="font-mono font-bold text-amber-300">{params.tauD.toFixed(1)}s</span>
+            </div>
           </div>
           <input
             id="slider-taud"
@@ -240,7 +256,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
             step="0.1"
             value={params.tauD}
             onChange={(e) => onParamsChange({ tauD: parseFloat(e.target.value) })}
-            className="w-full h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-cyan-400"
+            className="w-full h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-amber-400"
           />
           <div className="flex justify-between text-[10px] text-slate-500">
             <span>0.0s (No Delay)</span>
@@ -250,17 +266,33 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
         </div>
 
         {/* Process Time Constant (tau_1) */}
-        <div className="space-y-1">
-          <div className="flex justify-between text-xs">
+        <div className="space-y-1 bg-slate-950/40 p-2 rounded-lg border border-slate-800/80">
+          <div className="flex items-center justify-between text-xs">
             <span className="font-semibold text-slate-300 flex items-center gap-1">
               Time Constant (&tau;<sub>1</sub>)
             </span>
-            <span className="font-mono font-bold text-cyan-300">{params.tau1.toFixed(1)}s</span>
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => onParamsChange({ tau1: Math.max(0.2, +(params.tau1 - 0.5).toFixed(1)) })}
+                className="px-1 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-[10px] font-mono text-slate-300 border border-slate-700 active:scale-95"
+              >
+                -0.5
+              </button>
+              <button
+                type="button"
+                onClick={() => onParamsChange({ tau1: Math.min(8.0, +(params.tau1 + 0.5).toFixed(1)) })}
+                className="px-1 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-[10px] font-mono text-slate-300 border border-slate-700 active:scale-95"
+              >
+                +0.5
+              </button>
+              <span className="font-mono font-bold text-cyan-300">{params.tau1.toFixed(1)}s</span>
+            </div>
           </div>
           <input
             id="slider-tau1"
             type="range"
-            min="0.5"
+            min="0.2"
             max="8.0"
             step="0.1"
             value={params.tau1}
@@ -268,7 +300,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
             className="w-full h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-cyan-400"
           />
           <div className="flex justify-between text-[10px] text-slate-500">
-            <span>0.5s (Fast)</span>
+            <span>0.2s (Fast)</span>
             <span>Thermal/Capacity Lag</span>
             <span>8.0s (Slow)</span>
           </div>

@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { ProcessType, LoopState, LoopParameters } from '../types';
-import { RotateCw, ZoomIn, ZoomOut, Eye, Compass } from 'lucide-react';
+import { RotateCw, ZoomIn, ZoomOut, Eye, Compass, Layers } from 'lucide-react';
 
 interface ThreeViewportProps {
   processType: ProcessType;
@@ -42,6 +42,8 @@ export const ThreeViewport: React.FC<ThreeViewportProps> = ({
     tankDrainValve: THREE.Mesh | null;
     conveyorPkgs: THREE.Mesh[];
     distillTrays: THREE.Mesh[];
+    distillStreams: THREE.Mesh[];
+    distillFeed: THREE.Mesh | null;
   }>({
     hxTubes: [],
     hxSteamValve: null,
@@ -50,6 +52,8 @@ export const ThreeViewport: React.FC<ThreeViewportProps> = ({
     tankDrainValve: null,
     conveyorPkgs: [],
     distillTrays: [],
+    distillStreams: [],
+    distillFeed: null,
   });
 
   // State refs to read safely in render loop without re-triggering effects
@@ -230,12 +234,36 @@ export const ThreeViewport: React.FC<ThreeViewportProps> = ({
       });
 
       // 4. Distillation Column: 4 Tray froth states showing multicapacity wave
+      const distillTrayYs = [2.9, 1.0, -0.9, -2.8]; // Tray 1 (Top) to Tray 4 (Bottom)
       dynamicMeshesRef.current.distillTrays.forEach((tray, idx) => {
-        const trayVal = curState.trayStates[idx] ?? curPV;
+        const trayVal = Math.max(0, Math.min(100, curState.trayStates[idx] ?? curPV));
         const mat = tray.material as THREE.MeshStandardMaterial;
-        const trayHue = Math.max(0.0, (1.0 - trayVal / 100.0) * 0.55);
-        mat.emissive.setHSL(trayHue, 1.0, 0.4);
+
+        // Dynamic height scaling (0.05 to 0.7 units high based on level %)
+        const targetH = Math.max(0.06, (trayVal / 100.0) * 0.75);
+        tray.scale.set(1.0, targetH / 0.35, 1.0);
+        tray.position.y = distillTrayYs[idx] + 0.05 + targetH / 2.0;
+
+        // Thermal/Froth color gradient from cooler top reflux (cyan/green) to hot reboiler (amber/rose)
+        const baseHue = 0.50 - idx * 0.09;
+        mat.color.setHSL(baseHue, 0.9, 0.28 + (trayVal / 100.0) * 0.3);
+        mat.emissive.setHSL(baseHue, 1.0, 0.12 + (trayVal / 100.0) * 0.4);
       });
+
+      // Distillation downcomer streams between trays
+      dynamicMeshesRef.current.distillStreams.forEach((stream, sIdx) => {
+        const sourceVal = Math.max(0, Math.min(100, curState.trayStates[sIdx] ?? curPV));
+        stream.visible = sourceVal > 8.0;
+        const streamThick = Math.max(0.1, sourceVal / 85.0);
+        stream.scale.set(streamThick, 1.0, streamThick);
+      });
+
+      // Distillation reflux feed into Tray 1
+      if (dynamicMeshesRef.current.distillFeed) {
+        dynamicMeshesRef.current.distillFeed.visible = curCO > 3.0;
+        const fScale = Math.max(0.1, curCO / 80.0);
+        dynamicMeshesRef.current.distillFeed.scale.set(fScale, 1.0, fScale);
+      }
 
       renderer.render(scene, camera);
     };
@@ -266,6 +294,8 @@ export const ThreeViewport: React.FC<ThreeViewportProps> = ({
       tankDrainValve: null,
       conveyorPkgs: [],
       distillTrays: [],
+      distillStreams: [],
+      distillFeed: null,
     };
 
     // Dispose old children
@@ -578,21 +608,44 @@ export const ThreeViewport: React.FC<ThreeViewportProps> = ({
       skirt.position.y = -4.9;
       equipGroup.add(skirt);
 
-      // 2. 4 Distillation Trays with Perforated Plates and Liquid Froth
+      // Overhead Reflux Inlet Pipe (at top feeding into Tray 1)
+      const refluxPipe = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.18, 1.6, 16), steelMat);
+      refluxPipe.position.set(-1.0, 4.4, 0);
+      equipGroup.add(refluxPipe);
+
+      const refluxStreamGeo = new THREE.CylinderGeometry(0.1, 0.1, 1.1, 16);
+      const streamMat = new THREE.MeshBasicMaterial({ color: 0x38bdf8, transparent: true, opacity: 0.8 });
+      const refluxStream = new THREE.Mesh(refluxStreamGeo, streamMat);
+      refluxStream.position.set(-1.0, 3.4, 0);
+      equipGroup.add(refluxStream);
+      dynamicMeshesRef.current.distillFeed = refluxStream;
+
+      // 2. 4 Distillation Trays with Perforated Plates and Dynamic Liquid Levels
+      // Top-to-bottom layout: Tray 1 (y=2.9), Tray 2 (y=1.0), Tray 3 (y=-0.9), Tray 4 (y=-2.8)
+      const trayYs = [2.9, 1.0, -0.9, -2.8];
+
       for (let i = 0; i < 4; i++) {
-        const trayY = -2.8 + i * 1.9;
+        const trayY = trayYs[i];
 
         // Tray metal plate
         const plate = new THREE.Mesh(new THREE.CylinderGeometry(1.76, 1.76, 0.1, 32), steelMat);
         plate.position.y = trayY;
         equipGroup.add(plate);
 
-        // Downcomer pipe connecting to lower tray
-        if (i > 0) {
+        // Downcomer pipe connecting to next lower tray
+        if (i < 3) {
+          const nextY = trayYs[i + 1];
           const dcX = i % 2 === 0 ? 1.2 : -1.2;
-          const downcomer = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 1.8, 16), steelMat);
-          downcomer.position.set(dcX, trayY - 0.9, 0);
+          const pipeHeight = trayY - nextY;
+          const downcomer = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.14, pipeHeight, 16), steelMat);
+          downcomer.position.set(dcX, (trayY + nextY) / 2.0, 0);
           equipGroup.add(downcomer);
+
+          // Liquid stream flowing through downcomer
+          const dcStream = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, pipeHeight * 0.95, 16), streamMat);
+          dcStream.position.set(dcX, (trayY + nextY) / 2.0, 0);
+          equipGroup.add(dcStream);
+          dynamicMeshesRef.current.distillStreams.push(dcStream);
         }
 
         // Bubble caps on tray
@@ -602,7 +655,7 @@ export const ThreeViewport: React.FC<ThreeViewportProps> = ({
           equipGroup.add(cap);
         });
 
-        // Dynamic Froth / Liquid Pool
+        // Dynamic Froth / Liquid Pool for this tray level
         const frothMat = new THREE.MeshStandardMaterial({
           color: 0x38bdf8,
           emissive: 0x0284c7,
@@ -758,6 +811,41 @@ export const ThreeViewport: React.FC<ThreeViewportProps> = ({
           </span>
         </div>
       </div>
+
+      {/* 4-Stage Distillation Column Levels Overlay */}
+      {processType === 'multiCapacity' && (
+        <div className="absolute top-14 left-3 z-10 bg-slate-950/85 backdrop-blur-md px-3 py-2 rounded-lg border border-purple-800/60 shadow-xl w-60 text-xs font-mono">
+          <div className="flex items-center justify-between pb-1 mb-1.5 border-b border-purple-900/60 text-purple-300 font-sans font-bold text-[11px] uppercase tracking-wider">
+            <div className="flex items-center gap-1.5">
+              <Layers size={13} className="text-purple-400" />
+              <span>Distillation (4 Levels)</span>
+            </div>
+            <span className="text-[10px] text-slate-400 font-normal">Top &darr; Btm</span>
+          </div>
+
+          <div className="space-y-1.5">
+            {[
+              { name: 'Tray 1 (Top / Reflux)', val: loopState.trayStates[0], color: 'bg-emerald-400' },
+              { name: 'Tray 2 (Stage 2)', val: loopState.trayStates[1], color: 'bg-cyan-400' },
+              { name: 'Tray 3 (Stage 3)', val: loopState.trayStates[2], color: 'bg-sky-400' },
+              { name: 'Tray 4 (Bottoms / PV)', val: loopState.trayStates[3], color: 'bg-amber-400' },
+            ].map((tray, idx) => (
+              <div key={idx} className="space-y-0.5">
+                <div className="flex justify-between text-[10px]">
+                  <span className="text-slate-300 font-sans">{tray.name}</span>
+                  <span className="font-bold text-slate-100">{tray.val.toFixed(1)}%</span>
+                </div>
+                <div className="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden">
+                  <div
+                    className={`h-full ${tray.color} transition-all duration-75`}
+                    style={{ width: `${Math.max(0, Math.min(100, tray.val))}%` }}
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Fallback if WebGL completely unavailable */}
       {!webglSupported && (
